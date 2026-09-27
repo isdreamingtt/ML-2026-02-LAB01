@@ -27,7 +27,7 @@ USER_AGENT = (
     "+https://www.ucn.cl; MachineLearning-LAB01)"
 )
 TIMEOUT_HTTP = 20
-PAUSA_ENTRE_REQUESTS = 1.5
+PAUSA_ENTRE_REQUESTS = 4
 
 # RSS de Google News restringido a Chile / español latinoamericano.
 GOOGLE_NEWS_RSS = "https://news.google.com/rss/search"

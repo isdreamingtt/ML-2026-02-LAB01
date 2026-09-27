@@ -15,6 +15,7 @@ import re
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
+import logging
 
 from src.config import DIR_JSON, GEMINI_API_KEY, GEMINI_MODEL, PAUSA_ENTRE_REQUESTS
 from src.modelos import NoticiaFuente
@@ -64,20 +65,29 @@ class ExtractorGemini(ExtractorLLM):
 
     def construir_prompt(self, noticia: NoticiaFuente) -> str:
         campos = ", ".join(self.CAMPOS_OBLIGATORIOS)
-        texto = (noticia.texto_limpio or "").strip()
+        texto = (noticia.texto_limpio or "").strip()[:12000]
         return (
-            "Analiza la siguiente noticia delictual.\n\n"
-            "Extrae solamente informacion explicita. No inventes datos, "
-            "entidades, roles ni relaciones.\n"
-            "Devuelve exclusivamente JSON valido, sin markdown ni explicaciones.\n\n"
-            f"Campos obligatorios: {campos}.\n"
-            "personas: lista de objetos con claves nombre y rol.\n"
-            "objetos: lista de objetos con claves tipo, nombre, cantidad, unidad.\n"
-            "relaciones: lista de objetos con claves origen, tipo, destino.\n"
-            "Si un dato no aparece, usa null o una lista vacia.\n\n"
-            f"id_noticia: {noticia.id_noticia}\n"
-            f"fuente: {noticia.fuente}\n"
-            f"url: {noticia.url}\n\n"
+            "Eres un analista de inteligencia experto en estructuración de datos.\n"
+            "Analiza la siguiente noticia delictual y extrae solamente información explícita. "
+            "Bajo ninguna circunstancia inventes o deduzcas datos, entidades, roles ni relaciones.\n"
+            "Devuelve EXCLUSIVAMENTE un objeto JSON válido, sin usar markdown (sin bloques ```json), "
+            "ni saludos, ni explicaciones previas o posteriores.\n\n"
+            f"El JSON DEBE contener exactamente estas claves en el nivel raíz: {campos}.\n\n"
+            "Reglas de formato por campo:\n"
+            "- resumen: Un párrafo breve (máximo 3 líneas) resumiendo el hecho central.\n"
+            "- delitos: Lista de strings con los delitos mencionados.\n"
+            "- personas: Lista de objetos con claves 'nombre' y 'rol' (ej. imputado, victima, testigo).\n"
+            "- organizaciones: Lista de strings (ej. Carabineros, PDI, bandas).\n"
+            "- lugares: Lista de strings (comunas, regiones, calles).\n"
+            "- objetos: Lista de objetos con claves 'tipo' (ej. arma, droga), 'nombre', 'cantidad' (usa null si no sale), 'unidad' (usa null si no sale).\n"
+            "- relaciones: Lista de objetos con claves 'origen', 'tipo' (ej. INVESTIGADO_POR, OPERA_EN) y 'destino'. "
+            "Asegúrate de que 'origen' y 'destino' coincidan exactamente con nombres extraídos en los otros campos.\n"
+            "REGLA CRÍTICA: NO OMITAS NINGUNA CLAVE. Tu respuesta DEBE contener exactamente las 12 claves solicitadas en la raíz."
+            "Si algún dato no aparece, la clave debe existir obligatoriamente con valor null o [].\n\n"
+            "Usa estos datos predefinidos para los metadatos de la noticia:\n"
+            f"id_noticia: \"{noticia.id_noticia}\"\n"
+            f"fuente: \"{noticia.fuente}\"\n"
+            f"url: \"{noticia.url}\"\n\n"
             "NOTICIA:\n"
             f"{texto}\n"
         )
@@ -90,23 +100,44 @@ class ExtractorGemini(ExtractorLLM):
             )
         cliente = self._obtener_cliente()
         from google.genai import types
+        from google.genai.errors import APIError
 
-        # TODO(alumno): recortar textos muy largos; reintentos ante 429 / timeouts.
-        respuesta = cliente.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=self.construir_prompt(noticia),
-            config=types.GenerateContentConfig(
-                automatic_function_calling=types.AutomaticFunctionCallingConfig(
-                    disable=True
-                ),
-                response_mime_type="application/json",
-                temperature=0,
-            ),
-        )
-        bruto = (getattr(respuesta, "text", None) or "").strip()
+        # TODO(alumno): recortar textos muy largos; reintentos ante 429 / timeouts. -> Listo!
+        max_intentos = 3
+        intento_actual = 0
+        bruto = ""
+
+        while intento_actual < max_intentos:
+            try:
+                respuesta = cliente.models.generate_content(
+                    model=GEMINI_MODEL,
+                    contents=self.construir_prompt(noticia),
+                    config=types.GenerateContentConfig(
+                        automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                            disable=True
+                        ),
+                        response_mime_type="application/json",
+                        temperature=0,
+                    ),
+                )
+                bruto = (getattr(respuesta, "text", None) or "").strip()
+                break
+            except APIError as e:
+                if(e.code in (429,503)):
+                    intento_actual += 1
+                    espera = 60 if e.code == 429 else 20
+                    logging.warning(f"Error {e.code}. Reintento {intento_actual}/{max_intentos} en {espera} segundos...")
+                    time.sleep(espera)
+                else:
+                    raise
+            except Exception as e:
+                intento_actual += 1
+                logging.warning(f"Error inesperado: {e}. Reintento {intento_actual}/{max_intentos} en 5 segundos...")
+                time.sleep(15)
+
         if not bruto:
             raise ValueError(
-                f"Gemini devolvió una respuesta vacía para {noticia.id_noticia}."
+                f"Gemini devolvió una respuesta vacía o falló tras los reintentos para {noticia.id_noticia}."
             )
         data = self._parsear_json(bruto)
         data["id_noticia"] = noticia.id_noticia
