@@ -75,15 +75,15 @@ class ExtractorGemini(ExtractorLLM):
             f"El JSON DEBE contener exactamente estas claves en el nivel raíz: {campos}.\n\n"
             "Reglas de formato por campo:\n"
             "- resumen: Un párrafo breve (máximo 3 líneas) resumiendo el hecho central.\n"
-            "- delitos: Lista de strings con los delitos mencionados.\n"
-            "- personas: Lista de objetos con claves 'nombre' y 'rol' (ej. imputado, victima, testigo).\n"
-            "- organizaciones: Lista de strings (ej. Carabineros, PDI, bandas).\n"
-            "- lugares: Lista de strings (comunas, regiones, calles).\n"
-            "- objetos: Lista de objetos con claves 'tipo' (ej. arma, droga), 'nombre', 'cantidad' (usa null si no sale), 'unidad' (usa null si no sale).\n"
-            "- relaciones: Lista de objetos con claves 'origen', 'tipo' (ej. INVESTIGADO_POR, OPERA_EN) y 'destino'. "
-            "Asegúrate de que 'origen' y 'destino' coincidan exactamente con nombres extraídos en los otros campos.\n"
-            "REGLA CRÍTICA: NO OMITAS NINGUNA CLAVE. Tu respuesta DEBE contener exactamente las 12 claves solicitadas en la raíz."
-            "Si algún dato no aparece, la clave debe existir obligatoriamente con valor null o [].\n\n"
+            "- delitos: Lista de strings con los delitos mencionados. Si no hay, devuelve [].\n"
+            "- personas: Lista de objetos con claves 'nombre' y 'rol'. Si no hay, devuelve [].\n"
+            "- organizaciones: Lista de strings (ej. Carabineros, PDI, bandas). Si no hay, DEBES devolver [].\n"
+            "- lugares: Lista de strings (comunas, regiones, calles). Si no hay, devuelve [].\n"
+            "- objetos: Lista de objetos con claves 'tipo', 'nombre', 'cantidad', 'unidad'. Si no hay, devuelve [].\n"
+            "- relaciones: Lista de objetos con claves 'origen', 'tipo' y 'destino'. Si no hay, devuelve [].\n"
+            "Asegúrate de que 'origen' y 'destino' coincidan exactamente con nombres extraídos en los otros campos.\n\n"
+            "REGLA CRÍTICA Y ESTRICTA: NUNCA omitas ninguna clave del nivel raíz. "
+            "Incluso si el texto no menciona organizaciones, personas u objetos, la clave DEBE existir obligatoriamente en el JSON asociada a una lista vacía [].\n\n"
             "Usa estos datos predefinidos para los metadatos de la noticia:\n"
             f"id_noticia: \"{noticia.id_noticia}\"\n"
             f"fuente: \"{noticia.fuente}\"\n"
@@ -125,7 +125,7 @@ class ExtractorGemini(ExtractorLLM):
             except APIError as e:
                 if(e.code in (429,503)):
                     intento_actual += 1
-                    espera = 60 if e.code == 429 else 20
+                    espera = 60 if e.code == 429 else 30
                     logging.warning(f"Error {e.code}. Reintento {intento_actual}/{max_intentos} en {espera} segundos...")
                     time.sleep(espera)
                 else:

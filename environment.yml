@@ -10,6 +10,7 @@ dependencies:
   - feedparser
   - pandas
   - matplotlib
+  - seaborn
   - python-dotenv
   - pip
   - pip:
