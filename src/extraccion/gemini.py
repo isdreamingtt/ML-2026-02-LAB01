@@ -132,7 +132,7 @@ class ExtractorGemini(ExtractorLLM):
                     raise
             except Exception as e:
                 intento_actual += 1
-                logging.warning(f"Error inesperado: {e}. Reintento {intento_actual}/{max_intentos} en 5 segundos...")
+                logging.warning(f"Error inesperado: {e}. Reintento {intento_actual}/{max_intentos} en 15 segundos...")
                 time.sleep(15)
 
         if not bruto:

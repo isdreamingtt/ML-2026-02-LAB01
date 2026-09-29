@@ -152,8 +152,21 @@ class PipelineLaboratorio:
     def ejecutar_obsidian(self) -> None:
         """TODO(alumno): JSON → notas Markdown enlazadas."""
         print("== Etapa: obsidian (vault) ==")
+        import json
+        noticias = []
+        
+        if DIR_JSON.exists():
+            for ruta in DIR_JSON.glob("*.json"):
+                with open(ruta, "r", encoding="utf-8") as f:
+                    noticias.append(json.load(f))
+                    
+        if not noticias:
+            print("No hay noticias JSON. Ejecuta extraer primero.")
+            return
+            
         try:
-            self.escritor.escribir_vault([])
+            self.escritor.escribir_vault(noticias)
+            print(f"Vault de Obsidian generado con {len(noticias)} notas.")
         except EtapaPendienteAlumno as pendiente:
             print(pendiente)
 
